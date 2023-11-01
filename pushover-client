@@ -1,0 +1,701 @@
+#!/bin/bash
+# Version: 0.1.0
+# Copyright (c) 2023:
+#   Darren 'Tadgy' Austin <darren (at) afterdark.org.uk>
+# Licensed under the terms of the GNU General Public License version 3.
+#
+# A PushOver client to send alert messages.
+
+# Configuration.
+CONFIG_API_URL="https://api.pushover.net/1/messages.json"
+CONFIG_SOUNDS_API_URL="https://api.pushover.net/1/sounds.json"
+
+# Defaults.
+DEFAULT_SYSTEM_DIR="/etc/pushover"
+DEFAULT_USER_DIR="${HOME}/.pushover"
+DEFAULT_CONFIG_FILE="default"
+DEFAULT_EXPIRY="3600"
+DEFAULT_RETRY="60"
+
+# Functions.
+show_help() {
+  local SCRIPT="${0##*/}"
+
+        #........1.........2.........3.........4.........5.........6.........7.........8
+  cat <<-EOF
+	Usage: $SCRIPT [options] [config file]
+	Push notifications to your https://pushover.net registered devices.
+
+	Options:
+	  -a, --attachment <filename>	The picture to send with the alert.  No default.
+	  -A, --api-url <url>		The API URL to use for this submission.  Default
+	  				is: $CONFIG_API_URL.
+	 				Quote <url> if it contains shell special chars.
+	  -c, --callback <url>		A URL which is accessed by API server when the
+					user acknowledges the alert.  This option is
+					only used in priority 2 alerts.
+	 				Quote <url> if it contains shell special chars.
+	  -d, --devices <devices>	A comma seperated list of the devices to receive
+	 				the alert.  Default is to send to all devices.
+	  -e, --expiry <seconds>	Set the expiration time for alerts sent with
+	 				priority 2.  Default is 3600 (1 hour).  The
+	 				maximum expiry time is 10800 (3 hours).
+              --examples		Show extended example usage of this program.
+          -h, --help			Show this help page.
+	  -m, --message <text>		The plain text message to send.
+	 				Quote <text> if it contains spaces.
+	 				This option or -M is required if a message is
+	 				not available from a config file.
+	  -M, --html-message <text>	The HTML message to send.
+	 				Quote <text> if it contains spaces.
+	 				This option or -m is required if a message is
+	 				not available from a config file.
+	      --monospace		Use a monospace font to display the message
+	 				given with -m.  Default is to use regular font.
+	 				This option cannot be used with -M.
+	  -p, --priority <priority>	Set the priority of the message:
+	 				  -2	Lowest priority - no alert/notification
+	 					will be generated.  However, the app
+	 					badge or number will update on devices.
+	 				  -1	Low priority - no alert sound is
+	 					emitted but a notification will appear.
+	 					During a user's configured quiet hours,
+	 					priority -1 is used for messages.
+	 				   0	Normal priority (the default) - an alert
+	 					sound and notification are generated.
+	 				   1	High priority - bypass the user's
+	 					configured quiet hours and generate an
+	 					alert and notification.
+	 				   2	Emergency - as priority 1, but the alert
+	 					and notification is repeated (subject to
+	 					the -r and -e options) until it is
+	 					acknowledged by the recipient.
+	  -q, --quiet			Do not print the API execution reply to stdout.
+	  -r, --retry <seconds>		Set the retry interval for alerts sent with
+	 				priority 2.  Default is 60 (1 minute).  The
+	 				minimum retry time is 30 seconds.
+	  -s, --subject <text>		The subject/title of the message.  If unset,
+	 				the configured app name is used.
+	 				Quote <text> if it contains spaces.
+	  -S, --sound <sound>		Set the alert sound to play with message:
+	 				  none		None/silent.
+	 				  vibrate	Vibrate only.
+	 				  pushover	Pushover (short, default).
+	 				  bike		Bike (short).
+	 				  bugle		Bugle (short).
+	 				  cashregister	Cash Register (short).
+	 				  classical	Classical (short).
+	 				  cosmic	Cosmic (short).
+	 				  falling	Falling (short).
+	 				  gamelan	Gamelan (short).
+	 				  incoming	Incoming (short).
+	 				  intermission	Intermission (short).
+	 				  magic		Magic (short).
+	 				  mechanical	Mechanical (short).
+	 				  pianobar	Piano Bar (short).
+	 				  siren		Siren (short).
+	 				  spacealarm	Space Alarm (short).
+	 				  tugboat	Tug Boat (short).
+	 				  alien		Alien Alarm (long).
+	 				  climb		Climb (long).
+	 				  persistent	Persistent (long).
+	 				  echo		Pushover Echo (long).
+	 				  updown	Up Down (long).
+	 				Or a sound uploaded to the user's account.
+	  -t, --token <token>		The pushover.net API token/key for the specific
+	 				application.  This option is required if not
+	 				available from a config file.
+	  -T, --ttl <seconds>		The number of seconds the alert will live (or
+	 				be displayed) on a users device before being
+	 				automatically removed.  The default is no ttl.
+	 				This option is ignored when alerts are sent with
+	 				priority (-p) 2.
+	      --timestamp <seconds>	The number of seconds since the unix epoch to
+	 				use as the timestamp for the alert.
+	 				The default timestamp is the time the API
+	 				received the message.
+	  -u, --user <user_key>		The pushover.net user key(s).  If a single user
+	 				key is specified, that account's configuration
+	 				will be used for the alerts.  If a comma
+	 				separated list (maximum 50) of user keys is
+					given, the alert is sent only to those users.
+					This option is required if not available from a
+					config file.
+	  -U, --url <url>		Set the URL to send with the alert.
+	 				Quote <url> if it contains shell special chars.
+	      --url-title <text>	The title of the URL given with -U.  Ignored
+	 				if -U is not used also.
+	 				Quote <text> if it contains spaces.
+	Option processing ceases with the first non-option argument, or "--".
+
+	If 'config_file' is specified it is used to read the default configuration.  If
+	'config_file' is not specified, a user specific or system default file will be
+	read to obtain the defaults.  Command line options override any config file.
+	If no default user specific or system config file can be read, command line
+	options are required for operation.
+
+	For example usage, use: $SCRIPT --examples
+	EOF
+}
+
+show_examples() {
+  local SCRIPT="${0##*/}"
+
+        #........1.........2.........3.........4.........5.........6.........7.........8
+  cat <<-EOF
+	Basic usage is: $SCRIPT [options] [config file]
+
+	[options] can be seen by running: $SCRIPT --help
+	[config file] configuration options are overridden by command line [options].
+	All or part settings may be specified in the [config file], with the addition of
+	command line [options] to augment the [config file] settings.
+
+	Command line examples:
+	  Send a plain text message to all devices, showing all required [options].
+	    $SCRIPT -u <user key> -t <API token> -m "Test message"
+
+	  Same as the above, but do not show any response from the API server (an
+	  appropriate error/return code is set).
+	    $SCRIPT -q -u <user key> -t <API token> -m "Test message"
+
+	  Send a HTML message (which will be underlined) to all devices, showing all
+	  required [options].
+	    $SCRIPT -u <user key> -t <API token> -M "<u>Test message</u>"
+
+	  Send a plain text message to all devices, with the addition of a subject/title
+	  to the message.
+	    $SCRIPT -u <user key> -t <API token> -s "Test subject" -m "..."
+
+	  Send a message to all devices, including a picture attachment.
+	    $SCRIPT -u <user key> -t <API token> -a </path/to/image> -m "..."
+
+	  Send a message to all devices, including a supplimentary URL with a title.
+	    $SCRIPT -u <user key> -t <API token> -U "https://afterdark.org.uk" \\
+	      --url-title "Afterdark" -m "Check out the included URL!"
+
+	  Send a message to all devices, selecting an alternative sound alert.
+	    $SCRIPT -u <user key> -t <API token> -s "magic" -m "..."
+
+	  Send a message to a specific list of devices.
+	    $SCRIPT -u <user key> -t <API token> -d "iphone,ipad" -m "..."
+
+	  Send an emergency alert, repeated every minute for an 2 hours until it is
+	  acknowledged by the user.
+	    $SCRIPT -u <user key> -t <API token> -p 2 -r 60 -e 7200 -m "..."
+
+	  Read all configuration from the given <config file> path and use that for
+	  sending the alert.  If this path does not exist, search for a file matching
+	  the <config file> name in the user's private pushover directory (~/.pushover)
+	  or the system wide pushover directory (/etc/pushover), in that order.
+	    $SCRIPT <config file>
+	EOF
+}
+
+# Get the last and second to last arguments of the command line.
+ARGS=( "$@" )
+(( ${#ARGS[@]} != 0 )) && LAST_ARG="${ARGS[-1]}"
+(( ${#ARGS[@]} >= 2 )) && PREV_ARG="${ARGS[-2]}"
+
+# If a config file was given on the command line, read it; otherwise read the default.
+if [[ -z "$LAST_ARG" ]] || { [[ "$LAST_ARG" == -* ]] && [[ "$PREV_ARG" != "--" ]]; }; then
+  # Read the default configs as a basis for options.
+  if [[ -r "$DEFAULT_USER_DIR/$DEFAULT_CONFIG_FILE" ]]; then
+    eval "$(awk '!/^(#|$|[[:blank:]]*$)/ { print "CONFIG_"$0 }' "$DEFAULT_USER_DIR/$DEFAULT_CONFIG_FILE")" 2>/dev/null || {
+      printf "%s: %s '%s'\\n" "${0##*/}" "error in config file" "$DEFAULT_USER_DIR/$DEFAULT_CONFIG_FILE" >&2
+      exit 1
+    }
+  elif [[ -r "$DEFAULT_SYSTEM_DIR/$DEFAULT_CONFIG_FILE" ]]; then
+    eval "$(awk '!/^(#|$|[[:blank:]]*$)/ { print "CONFIG_"$0 }' "$DEFAULT_SYSTEM_DIR/$DEFAULT_CONFIG_FILE")" 2>/dev/null || {
+      printf "%s: %s '%s'\\n" "${0##*/}" "error in config file" "$DEFAULT_SYSTEM_DIR/$DEFAULT_CONFIG_FILE" >&2
+      exit 1
+    }
+  fi
+elif [[ "$LAST_ARG" != -* ]] || { [[ "$LAST_ARG" == -* ]] && [[ "$PREV_ARG" == "--" ]]; }; then
+  # Read the config file given on the command line.
+  [[ -e "$LAST_ARG" ]] && [[ ! -d "$LAST_ARG" ]] && [[ -r "$LAST_ARG" ]] && FILENAME="$LAST_ARG"
+  [[ -z "$FILENAME" ]] && [[ -e "$DEFAULT_USER_DIR/$LAST_ARG" ]] && [[ ! -d "$DEFAULT_USER_DIR/$LAST_ARG" ]] && [[ -r "$DEFAULT_USER_DIR/$LAST_ARG" ]] && \
+      FILENAME="$DEFAULT_USER_DIR/$LAST_ARG"
+  [[ -z "$FILENAME" ]] && [[ -e "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && [[ ! -d "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && [[ -r "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && \
+      FILENAME="$DEFAULT_SYSTEM_DIR/$LAST_ARG"
+  [[ -z "$FILENAME" ]] && {
+    printf "%s: '%s' %s\\n" "${0##*/}" "$LAST_ARG" "invalid config file name" >&2
+    exit 1
+  }
+  eval "$(awk '!/^(#|$|[[:blank:]]*$)/ { print "CONFIG_"$0 }' "$FILENAME")" 2>/dev/null || {
+    printf "%s: %s '%s'\\n" "${0##*/}" "error in config file" "$FILENAME" >&2
+    exit 1
+  }
+  unset "ARGS[-1]"
+  (( ${#ARGS[@]} > 0 )) && [[ "${ARGS[-1]}" == "--" ]] && unset "ARGS[-1]"
+fi
+
+# Parse command line options.
+set -- "${ARGS[@]}"
+while [[ -n "$1" ]]; do
+  case "$1" in
+    -a|-attachment|--attachment)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "attachment filename cannot be an empty value" >&2
+        exit 1
+      else
+        CONFIG_ATTACHMENT="$2"
+      fi
+      shift
+      ;;
+    -A|-api-url|--api-url)
+      # Setting is validated below.
+      CONFIG_API_URL="$2"
+      shift
+      ;;
+    -c|-callback|--callback)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "callback URL address cannot be empty" >&2
+        exit 1
+      else
+        CONFIG_CALLBACK_URL="$2"
+      fi
+      shift
+      ;;
+    -d|-devices|--devices)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "device list cannot be an empty value" >&2
+        exit 1
+      else
+        CONFIG_DEVICES="$2"
+      fi
+      shift
+      ;;
+    -e|-expiry|--expiry)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "expiry time cannot be an empty value" >&2
+        exit 1
+      else
+        CONFIG_EXPIRY="$2"
+      fi
+      shift
+      ;;
+    -examples|--examples)
+      show_examples
+      exit 0
+      ;;
+    -h|-help|--help)
+      show_help
+      exit 0
+      ;;
+    -m|-message|--message)
+      # Setting is validated below.
+      CONFIG_MESSAGE="$2"
+      shift
+      ;;
+    -M|-html-message|--html-message)
+      # Setting is validated below.
+      CONFIG_HTML_MESSAGE="$2"
+      shift
+      ;;
+    -monospace|--monospace)
+      # Setting is validated below.
+      CONFIG_MONOSPACE="1"
+      shift
+      ;;
+    -p|-priority|--priority)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "priority setting cannot be an empty value" >&2
+        exit 1
+      else
+        CONFIG_PRIORITY="$2"
+      fi
+      shift
+      ;;
+    -q|-quiet|--quiet)
+      CONFIG_QUIET=1
+      shift
+      ;;
+    -r|-retry|--retry)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "retry time cannot be an empty value" >&2
+        exit 1
+      else
+        CONFIG_RETRY="$2"
+      fi
+      shift
+      ;;
+    -s|-subject|--subject)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "subject/title cannot be an empty value" >&2
+        exit 1
+      else
+        CONFIG_SUBJECT="$2"
+      fi
+      shift
+      ;;
+    -S|-sound|--sound)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "sound selection cannot be empty" >&2
+        exit 1
+      else
+        CONFIG_SOUND="$2"
+      fi
+      shift
+      ;;
+    -t|-token|--token)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "token key cannot be an empty value" >&2
+        exit 1
+      else
+        CONFIG_TOKEN="$2"
+      fi
+      shift
+      ;;
+    -T|-ttl|--ttl)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "ttl cannot be an empty value" >&2
+        exit 1
+      else
+        CONFIG_TTL="$2"
+      fi
+      shift
+      ;;
+    -timestamp|--timestamp)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "timestamp cannot be an empty value" >&2
+        exit 1
+      else
+        CONFIG_TIMESTAMP="$2"
+      fi
+      shift
+      ;;
+    -u|-user|--user)
+      # Setting is validated below.
+      CONFIG_USER_KEYS="$2"
+      shift
+      ;;
+    -U|-url|--url)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "URL address cannot be empty" >&2
+        exit 1
+      else
+        CONFIG_URL="$2"
+      fi
+      shift
+      ;;
+    -url-title|--url-title)
+      if [[ "$2" =~ ^[[:blank:]]*$ ]]; then
+        printf "%s: %s\\n" "${0##*/}" "URL title cannot be empty" >&2
+        exit 1
+      else
+        CONFIG_URL_TITLE="$2"
+      fi
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      printf "%s: %s: %s\\n" "${0##*/}" "invalid option" "$1" >&2
+      printf "%s: %s %s\\n" "Try" "${0##*/}" "--help" >&2
+      exit 1
+      ;;
+   *)
+      break
+      ;;
+  esac
+  shift
+done
+
+# The options list should be empty if the correct syntax was used.
+[[ -n "$1" ]] && {
+  printf "%s: %s\\n" "${0##*/}" "too many non-option arguments provided" >&2
+  exit 1
+}
+
+# Validate all the CONFIG_* settings.
+[[ "$CONFIG_API_URL" =~ ^[[:blank:]]*$ ]] && {
+  printf "%s: %s\\n" "${0##*/}" "API URL (-A) cannot be an empty value" >&2
+  exit 1
+}
+
+if [[ ! "$CONFIG_ATTACHMENT" =~ ^[[:blank:]]*$ ]]; then
+  if [[ ! -e "$CONFIG_ATTACHMENT" ]]; then
+    printf "%s: %s '%s' %s\\n" "${0##*/}" "attachment (-a)" "$CONFIG_ATTACHMENT" "does not exist" >&2
+    exit 1
+  elif [[ -d "$CONFIG_ATTACHMENT" ]]; then
+    printf "%s: %s '%s' %s\\n" "${0##*/}" "attachment (-a)" "$CONFIG_ATTACHMENT" "is a directory, not a file" >&2
+    exit 1
+  elif [[ ! -r "$CONFIG_ATTACHMENT" ]]; then
+    printf "%s: %s '%s' %s\\n" "${0##*/}" "attachment (-a)" "$CONFIG_ATTACHMENT" "is not readable by you" >&2
+    exit 1
+  elif (( $(stat --printf=%s "$CONFIG_ATTACHMENT") > 2621440 )); then
+    printf "%s: %s\\n" "${0##*/}" "attachment (-a) is too large (2.5MB maximum)" >&2
+    exit 1
+  fi
+else
+  unset "CONFIG_ATTACHMENT"
+fi
+
+if [[ ! "$CONFIG_CALLBACK_URL" =~ ^[[:blank:]]*$ ]]; then
+  (( ${#CONFIG_CALLBACK_URL} > 512 )) && {
+    printf "%s: %s\\n" "${0##*/}" "callback URL (-c) is too long (maximum 512 characters)" >&2
+    exit 1
+  }
+else
+  unset "CONFIG_CALLBACK_URL"
+fi
+
+if [[ ! "$CONFIG_DEVICES" =~ ^[[:blank:]]*$ ]]; then
+  while read -r -d , DEV; do
+    [[ -z "$DEV" ]] && continue
+    if (( "${#DEV}" > 25 )); then
+      printf "%s: %s\\n" "${0##*/}" "device IDs (-d) are 25 characters or less in length" >&2
+      exit 1
+    elif [[ ! "$DEV" =~ ^[[:alnum:]_-]*$ ]]; then
+      printf "%s: %s\\n" "${0##*/}" "device IDs (-d) can only be letters, numbers, _ and -" >&2
+      exit 1
+    else
+      if [[ -z "$LIST" ]]; then
+        LIST="$DEV"
+      else
+        LIST+=",$DEV"
+      fi
+    fi
+  done <<<"$CONFIG_DEVICES,"		# The , on the end is required.
+  CONFIG_DEVICES="$LIST"
+else
+  unset "CONFIG_DEVICES"
+fi
+
+if [[ ! "$CONFIG_EXPIRY" =~ ^[[:blank:]]*$ ]]; then
+  if [[ ! "$CONFIG_EXPIRY" =~ [[:digit:]] ]]; then
+    printf "%s: %s\\n" "${0##*/}" "expiry time (-e) must be a number" >&2
+    exit 1
+  elif (( CONFIG_EXPIRY < 30 )); then
+    printf "%s: %s\\n" "${0##*/}" "expiry time (-e) cannot be that short (30s minimum)" >&2
+    exit 1
+  elif (( CONFIG_EXPIRY > 10800 )); then
+    printf "%s: %s\\n" "${0##*/}" "expiry time (-e) cannot be that long (10800s/3h maximum)" >&2
+    exit 1
+  elif [[ -n "$CONFIG_RETRY" ]] && (( CONFIG_EXPIRY < CONFIG_RETRY )); then
+    printf "%s: %s\\n" "${0##*/}" "expiry time (-e) is less than retry time" >&2
+    exit 1
+  fi
+else
+  unset "CONFIG_EXPIRY"
+fi
+
+if [[ "$CONFIG_MONOSPACE" =~ ^[[:blank:]]*$ ]] || [[ "$CONFIG_MONOSPACE" =~ ^(false|0)$ ]]; then
+  CONFIG_MONOSPACE=0
+elif [[ "$CONFIG_MONOSPACE" =~ ^(true|1)$ ]]; then
+  CONFIG_MONOSPACE=1
+else
+  printf "%s: %s\\n" "${0##*/}" "monospace (--monospace) setting must be 'true', '1', 'false' or '0'" >&2
+  exit 1
+fi
+
+if [[ ! "$CONFIG_MESSAGE" =~ ^[[:blank:]]*$ ]] && [[ ! "$CONFIG_HTML_MESSAGE" =~ ^[[:blank:]]*$ ]]; then
+  printf "%s: %s\\n" "${0##*/}" "cannot mix a plain text (-m) and HTML (-M) message setting" >&2
+  exit 1
+elif [[ "$CONFIG_MESSAGE" =~ ^[[:blank:]]*$ ]] && [[ "$CONFIG_HTML_MESSAGE" =~ ^[[:blank:]]*$ ]]; then
+  printf "%s: %s\\n" "${0##*/}" "must set either a plain text (-m) or HTML (-M) message" >&2
+  exit 1
+elif [[ ! "$CONFIG_HTML_MESSAGE" =~ ^[[:blank:]]*$ ]] && (( CONFIG_MONOSPACE == 1 )); then
+  printf "%s: %s\\n" "${0##*/}" "HTML messages (-M) cannot be used with a monospace font (--monospace)" >&2
+  exit 1
+elif (( ${#CONFIG_MESSAGE} > 1024 )) || (( ${#CONFIG_HTML_MESSAGE} > 1024 )); then
+  printf "%s: %s\\n" "${0##*/}" "message (-m/-M) length is too long (maximum 1024 characters)" >&2
+  exit 1
+fi
+
+if [[ ! "$CONFIG_PRIORITY" =~ ^[[:blank:]]*$ ]]; then
+  if [[ ! "$CONFIG_PRIORITY" =~ [[:digit:]] ]]; then
+    printf "%s: %s\\n" "${0##*/}" "priority (-p) setting must be a number" >&2
+    exit 1
+  elif (( CONFIG_PRIORITY < -2 )) || (( CONFIG_PRIORITY > 2 )); then
+    printf "%s: %s\\n" "${0##*/}" "priority (-p) setting must be in the range -2 - 2" >&2
+    exit 1
+  fi
+else
+  unset "CONFIG_PRIORITY"
+fi
+
+if [[ "$CONFIG_QUIET" =~ ^[[:blank:]]*$ ]] || [[ "$CONFIG_QUIET" =~ ^(false|0)$ ]]; then
+  CONFIG_QUIET=0
+elif [[ "$CONFIG_QUIET" =~ ^(true|1)$ ]]; then
+  CONFIG_QUIET=1
+else
+  printf "%s: %s\\n" "${0##*/}" "quiet (-q) setting must be 'true', '1', 'false' or '0'" >&2
+  exit 1
+fi
+
+if [[ ! "$CONFIG_RETRY" =~ ^[[:blank:]]*$ ]]; then
+  if [[ ! "$CONFIG_RETRY" =~ [[:digit:]] ]]; then
+    printf "%s: %s\\n" "${0##*/}" "retry time (-r) must be a number" >&2
+    exit 1
+  elif (( CONFIG_RETRY < 30 )); then
+    printf "%s: %s\\n" "${0##*/}" "retry time (-r) cannot be that short (30s minimum)" >&2
+    exit 1
+  elif [[ -n "$CONFIG_EXPIRY" ]] && (( CONFIG_RETRY > CONFIG_EXPIRY )); then
+    printf "%s: %s\\n" "${0##*/}" "retry time (-r) exceeds expiry time" >&2
+    exit 1
+  fi
+else
+  unset "CONFIG_RETRY"
+fi
+
+if [[ ! "$CONFIG_SUBJECT" =~ ^[[:blank:]]*$ ]]; then
+  (( ${#CONFIG_SUBJECT} > 250 )) && {
+    printf "%s: %s\\n" "${0##*/}" "subject/title (-s) is too long (maximum 250 characters)" >&2
+    exit 1
+  }
+else
+  unset "CONFIG_SUBJECT"
+fi
+
+if [[ ! "$CONFIG_TOKEN" =~ ^[[:blank:]]*$ ]]; then
+  if (( "${#CONFIG_TOKEN}" != 30 )); then
+    printf "%s: %s\\n" "${0##*/}" "token key (-t) must be 30 characters in length" >&2
+    exit 1
+  elif [[ ! "$CONFIG_TOKEN" =~ ^[[:alnum:]]*$ ]]; then
+    printf "%s: %s\\n" "${0##*/}" "token key (-t) can only be letters and numbers" >&2
+    exit 1
+  fi
+else
+  printf "%s: %s\\n" "${0##*/}" "token key (-t) cannot be an empty value" >&2
+  exit 1
+fi
+
+if [[ ! "$CONFIG_SOUND" =~ ^[[:blank:]]*$ ]]; then
+  [[ ! "$CONFIG_SOUND" =~ ^(none|vibrate|pushover|bike|bugle|cashregister|classical|cosmic|falling|gamelan|incoming|intermission|magic|mechanical|pianobar|siren|spacealarm|tugboat|alien|climb|persistent|echo|updown)$ ]] && {
+    JSON="$(curl -s "$CONFIG_SOUNDS_API_URL?token=$CONFIG_TOKEN" 2>/dev/null)"
+    if [[ "$JSON" =~ \"status\":1, ]]; then
+      [[ ! "$JSON" =~ \"$CONFIG_SOUND\": ]] && {
+        printf "%s: %s\\n" "${0##*/}" "sound (-S) must be a built-in or user uploaded custom sound" >&2
+        exit 1
+      }
+    else
+      printf "%s: %s\\n" "${0##*/}" "failed to get list of custom sounds from API (invalid API token?)" >&2
+      exit 1
+    fi
+  }
+else
+  unset "CONFIG_SOUND"
+fi
+
+if [[ ! "$CONFIG_TTL" =~ ^[[:blank:]]*$ ]]; then
+  if [[ ! "$CONFIG_TTL" =~ [[:digit:]] ]]; then
+    printf "%s: %s\\n" "${0##*/}" "TTL (-T) must be a number" >&2
+    exit 1
+  elif (( CONFIG_TTL < 0 )); then
+    printf "%s: %s\\n" "${0##*/}" "TTL (-T) must be a positive number of seconds" >&2
+    exit 1
+  fi
+else
+  unset "CONFIG_TTL"
+fi
+
+if [[ ! "$CONFIG_TIMESTAMP" =~ ^[[:blank:]]*$ ]]; then
+  if [[ ! "$CONFIG_TIMESTAMP" =~ [[:digit:]] ]]; then
+    printf "%s: %s\\n" "${0##*/}" "timestamp (--timestamp) must be a number" >&2
+    exit 1
+  elif (( CONFIG_TIMESTAMP < 0 )); then
+    printf "%s: %s\\n" "${0##*/}" "timestamp (--timestamp) must be a positive number of seconds" >&2
+    exit 1
+  fi
+else
+  unset "CONFIG_TIMESTAMP"
+fi
+
+if [[ ! "$CONFIG_USER_KEYS" =~ ^[[:blank:]]*$ ]]; then
+  unset COUNT LIST
+  while read -r -d , KEY; do
+    [[ -z "$KEY" ]] && continue
+    if (( "${#KEY}" != 30 )); then
+      printf "%s: %s\\n" "${0##*/}" "user keys (-u) must be 30 characters in length" >&2
+      exit 1
+    elif [[ ! "$KEY" =~ ^[[:alnum:]]*$ ]]; then
+      printf "%s: %s\\n" "${0##*/}" "user keys (-u) can only be letters and numbers" >&2
+      exit 1
+    else
+      if [[ -z "$LIST" ]]; then
+        LIST="$KEY"
+        COUNT=1
+      else
+        LIST+=",$KEY"
+        (( COUNT++ ))
+      fi
+    fi
+  done <<<"$CONFIG_USER_KEYS,"		# The , on the end is required.
+  (( COUNT > 50 )) && {
+    printf "%s: %s\\n" "${0##*/}" "too many user keys (-u) (maximum 50)" >&2
+    exit 1
+  }
+  CONFIG_USER_KEYS="$LIST"
+else
+  printf "%s: %s\\n" "${0##*/}" "user keys (-u) cannot be an empty value" >&2
+  exit 1
+fi
+
+if [[ ! "$CONFIG_URL" =~ ^[[:blank:]]*$ ]]; then
+  (( ${#CONFIG_URL} > 512 )) && {
+    printf "%s: %s\\n" "${0##*/}" "URL (-U) is too long (maximum 512 characters)" >&2
+    exit 1
+  }
+else
+  unset "CONFIG_URL"
+fi
+
+if [[ ! "$CONFIG_URL_TITLE" =~ ^[[:blank:]]*$ ]]; then
+  (( ${#CONFIG_URL_TITLE} > 100 )) && {
+    printf "%s: %s\\n" "${0##*/}" "URL title (--url-title) is too long (maximum 100 characters)" >&2
+    exit 1
+  }
+else
+  unset "CONFIG_URL_TITLE"
+fi
+
+# Build the curl command line.
+COMMAND_LINE=('-s')
+# Required API elements.
+COMMAND_LINE+=('--form-string' user="$CONFIG_USER_KEYS")
+COMMAND_LINE+=('--form-string' token="$CONFIG_TOKEN")
+if [[ -v CONFIG_MESSAGE ]]; then
+  COMMAND_LINE+=('--form-string' message="$CONFIG_MESSAGE")
+  (( CONFIG_MONOSPACE == 1 )) && COMMAND_LINE+=('--form-string' 'monospace=1')
+else
+  COMMAND_LINE+=('--form-string' message="$CONFIG_HTML_MESSAGE")
+  COMMAND_LINE+=('--form-string' 'html=1')
+fi
+# Optional API elements.
+[[ -v CONFIG_ATTACHMENT ]] && COMMAND_LINE+=('--form' attachment="@$CONFIG_ATTACHMENT")
+[[ -v CONFIG_DEVICES ]] && COMMAND_LINE+=('--form-string' device="$CONFIG_DEVICES")
+[[ -v CONFIG_PRIORITY ]] && {
+  COMMAND_LINE+=('--form-string' priority="$CONFIG_PRIORITY")
+  (( CONFIG_PRIORITY == 2 )) && {
+    [[ -v CONFIG_CALLBACK_URL ]] && COMMAND_LINE+=('--form-string' callback="$CONFIG_CALLBACK_URL")
+    COMMAND_LINE+=('--form-string' expire="${CONFIG_EXPIRY:-$DEFAULT_EXPIRY}")
+    COMMAND_LINE+=('--form-string' retry="${CONFIG_RETRY:-$DEFAULT_RETRY}")
+  }
+}
+[[ -v CONFIG_SUBJECT ]] && COMMAND_LINE+=('--form-string' title="$CONFIG_SUBJECT")
+[[ -v CONFIG_SOUND ]] && COMMAND_LINE+=('--form-string' sound="$CONFIG_SOUND")
+[[ -v CONFIG_TTL ]] && COMMAND_LINE+=('--form-string' ttl="$CONFIG_TTL")
+[[ -v CONFIG_TIMESTAMP ]] && COMMAND_LINE+=('--form-string' timestamp="$CONFIG_TIMESTAMP")
+[[ -v CONFIG_URL ]] && COMMAND_LINE+=('--form-string' url="$CONFIG_URL")
+[[ -v CONFIG_URL_TITLE ]] && COMMAND_LINE+=('--form-string' url_title="$CONFIG_URL_TITLE")
+
+# Make the call to the messaging API.
+JSON="$(curl "${COMMAND_LINE[@]}" "$CONFIG_API_URL" 2>/dev/null)" || {
+  printf "%s: %s\\n" "${0##*/}" "API call failed" >&2
+  exit 3
+}
+if [[ "$JSON" =~ \"status\":1, ]]; then
+  (( CONFIG_QUIET == 0 )) && printf "%s\\n" "$JSON"
+else
+  printf "%s: %s\\n" "${0##*/}" "API returned a non-success status code" >&2
+  exit 2
+fi
+
+# 0 = Request submitted OK.
+# 1 = Usage error.
+# 2 = Request status error from API
+# 3 = Error accessing API
+exit 0
