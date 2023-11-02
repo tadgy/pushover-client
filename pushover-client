@@ -691,6 +691,7 @@ if [[ "$JSON" =~ \"status\":1, ]]; then
   (( CONFIG_QUIET == 0 )) && printf "%s\\n" "$JSON"
 else
   printf "%s: %s\\n" "${0##*/}" "API returned a non-success status code" >&2
+  (( CONFIG_QUIET == 0 )) && printf "%s\\n" "$JSON" >&2
   exit 2
 fi
 
