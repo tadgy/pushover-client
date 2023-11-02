@@ -183,12 +183,11 @@ show_examples() {
 	  acknowledged by the user.
 	    $SCRIPT -u <user key> -t <API token> -p 2 -r 60 -e 7200 -m "..."
 
-	  Read all configuration from the given <config file> path and use that for
-	  sending the alert.  If this path does not exist, search for a file matching
-	  the <config file> name in the user's private pushover directory
-	  (~/.pushover-client) or the system wide pushover directory
-	  (/etc/pushover-client), in that order.
-	    $SCRIPT <config file>
+	Read all configuration from <config file> path and use that for sending the
+	alert.  If this path does not exist, search for a file matching the the
+	<config file> name in the user's private pushover directory (~/.pushover-client)
+	or the system wide pushover directory (/etc/pushover-client), in that order.
+	  $SCRIPT <config file>
 	EOF
 }
 
