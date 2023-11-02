@@ -11,8 +11,8 @@ CONFIG_API_URL="https://api.pushover.net/1/messages.json"
 CONFIG_SOUNDS_API_URL="https://api.pushover.net/1/sounds.json"
 
 # Defaults.
-DEFAULT_SYSTEM_DIR="/etc/pushover"
-DEFAULT_USER_DIR="${HOME}/.pushover"
+DEFAULT_SYSTEM_DIR="/etc/pushover-client"
+DEFAULT_USER_DIR="${HOME}/.pushover-client"
 DEFAULT_CONFIG_FILE="default"
 DEFAULT_EXPIRY="3600"
 DEFAULT_RETRY="60"
@@ -185,8 +185,9 @@ show_examples() {
 
 	  Read all configuration from the given <config file> path and use that for
 	  sending the alert.  If this path does not exist, search for a file matching
-	  the <config file> name in the user's private pushover directory (~/.pushover)
-	  or the system wide pushover directory (/etc/pushover), in that order.
+	  the <config file> name in the user's private pushover directory
+	  (~/.pushover-client) or the system wide pushover directory
+	  (/etc/pushover-client), in that order.
 	    $SCRIPT <config file>
 	EOF
 }
