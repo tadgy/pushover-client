@@ -213,11 +213,15 @@ if [[ -z "$LAST_ARG" ]] || { [[ "$LAST_ARG" == -* ]] && [[ "$PREV_ARG" != "--" ]
   fi
 elif [[ "$LAST_ARG" != -* ]] || { [[ "$LAST_ARG" == -* ]] && [[ "$PREV_ARG" == "--" ]]; }; then
   # Read the config file given on the command line.
-  [[ -e "$LAST_ARG" ]] && [[ ! -d "$LAST_ARG" ]] && [[ -r "$LAST_ARG" ]] && FILENAME="$LAST_ARG"
-  [[ -z "$FILENAME" ]] && [[ -e "$DEFAULT_USER_DIR/$LAST_ARG" ]] && [[ ! -d "$DEFAULT_USER_DIR/$LAST_ARG" ]] && [[ -r "$DEFAULT_USER_DIR/$LAST_ARG" ]] && \
-      FILENAME="$DEFAULT_USER_DIR/$LAST_ARG"
-  [[ -z "$FILENAME" ]] && [[ -e "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && [[ ! -d "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && [[ -r "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && \
-      FILENAME="$DEFAULT_SYSTEM_DIR/$LAST_ARG"
+  if [[ "${LAST_ARG:0:1}" == "/" ]]; then
+    [[ -e "$LAST_ARG" ]] && [[ ! -d "$LAST_ARG" ]] && [[ -r "$LAST_ARG" ]] && FILENAME="$LAST_ARG"
+  else
+    [[ -e "$LAST_ARG" ]] && [[ ! -d "$LAST_ARG" ]] && [[ -r "$LAST_ARG" ]] && FILENAME="$LAST_ARG"
+    [[ -z "$FILENAME" ]] && [[ -e "$DEFAULT_USER_DIR/$LAST_ARG" ]] && [[ ! -d "$DEFAULT_USER_DIR/$LAST_ARG" ]] && [[ -r "$DEFAULT_USER_DIR/$LAST_ARG" ]] && \
+        FILENAME="$DEFAULT_USER_DIR/$LAST_ARG"
+    [[ -z "$FILENAME" ]] && [[ -e "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && [[ ! -d "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && [[ -r "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && \
+        FILENAME="$DEFAULT_SYSTEM_DIR/$LAST_ARG"
+  fi
   [[ -z "$FILENAME" ]] && {
     printf "%s: '%s' %s\\n" "${0##*/}" "$LAST_ARG" "invalid config file name" >&2
     exit 1
