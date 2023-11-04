@@ -32,16 +32,16 @@ show_help() {
 	  				is: $CONFIG_API_URL.
 	 				Quote <url> if it contains shell special chars.
 	  -c, --callback <url>		A URL which is accessed by API server when the
-					user acknowledges the alert.  This option is
-					only used in priority 2 alerts.
+	 				user acknowledges the alert.  This option is
+	 				only used in priority 2 alerts.
 	 				Quote <url> if it contains shell special chars.
 	  -d, --devices <devices>	A comma seperated list of the devices to receive
 	 				the alert.  Default is to send to all devices.
 	  -e, --expiry <seconds>	Set the expiration time for alerts sent with
 	 				priority 2.  Default is 3600 (1 hour).  The
 	 				maximum expiry time is 10800 (3 hours).
-              --examples		Show extended example usage of this program.
-          -h, --help			Show this help page.
+	      --examples		Show extended example usage of this program.
+	  -h, --help			Show this help page.
 	  -m, --message <text>		The plain text message to send.
 	 				Quote <text> if it contains spaces.
 	 				This option or -M is required if a message is
@@ -118,9 +118,9 @@ show_help() {
 	 				key is specified, that account's configuration
 	 				will be used for the alerts.  If a comma
 	 				separated list (maximum 50) of user keys is
-					given, the alert is sent only to those users.
-					This option is required if not available from a
-					config file.
+	 				given, the alert is sent only to those users.
+	 				This option is required if not available from a
+	 				config file.
 	  -U, --url <url>		Set the URL to send with the alert.
 	 				Quote <url> if it contains shell special chars.
 	      --url-title <text>	The title of the URL given with -U.  Ignored
