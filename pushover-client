@@ -23,8 +23,14 @@ show_help() {
 
         #........1.........2.........3.........4.........5.........6.........7.........8
   cat <<-EOF
-	Usage: $SCRIPT [options] [config file]
+	Usage: $SCRIPT [config file] [options]
 	Push notifications to your https://pushover.net registered devices.
+
+	If [config_file] is specified it is used to read the default configuration.
+	If [config_file] is not specified, a custom user or system 'default' file will be
+	read to obtain the defaults.  If no 'default' custom user or system config file
+	can be read, command line options are required for operation.
+	Command line [options] override any config file.
 
 	Options:
 	  -a, --attachment <filename>	The picture to send with the alert.  No default.
@@ -126,13 +132,7 @@ show_help() {
 	      --url-title <text>	The title of the URL given with -U.  Ignored
 	 				if -U is not used also.
 	 				Quote <text> if it contains spaces.
-	Option processing ceases with the first non-option argument, or "--".
-
-	If 'config_file' is specified it is used to read the default configuration.  If
-	'config_file' is not specified, a user specific or system default file will be
-	read to obtain the defaults.  Command line options override any config file.
-	If no default user specific or system config file can be read, command line
-	options are required for operation.
+	Option processing ceases with "--".
 
 	For example usage, use: $SCRIPT --examples
 	EOF
@@ -143,12 +143,12 @@ show_examples() {
 
         #........1.........2.........3.........4.........5.........6.........7.........8
   cat <<-EOF
-	Basic usage is: $SCRIPT [options] [config file]
+	Basic usage is: $SCRIPT [config file] [options]
 
-	[options] can be seen by running: $SCRIPT --help
 	[config file] configuration options are overridden by command line [options].
 	All or part settings may be specified in the [config file], with the addition of
 	command line [options] to augment the [config file] settings.
+	[options] can be seen by running: $SCRIPT --help
 
 	Command line examples:
 	  Send a plain text message to all devices, showing all required [options].
@@ -191,47 +191,45 @@ show_examples() {
 	EOF
 }
 
-# Get the last and second to last arguments of the command line.
+# Pick out possible config file and '--' arguments of the command line.
 ARGS=( "$@" )
-(( ${#ARGS[@]} != 0 )) && LAST_ARG="${ARGS[-1]}"
-(( ${#ARGS[@]} >= 2 )) && PREV_ARG="${ARGS[-2]}"
+(( ${#ARGS[@]} >= 1 )) && FIRST_ARG="${ARGS[0]}"
+(( ${#ARGS[@]} >= 2 )) && SECOND_ARG="${ARGS[1]}"
 
-# If a config file was given on the command line, read it; otherwise read the default.
-if [[ -z "$LAST_ARG" ]] || { [[ "$LAST_ARG" == -* ]] && [[ "$PREV_ARG" != "--" ]]; }; then
-  # Read the default configs as a basis for options.
-  if [[ -r "$DEFAULT_USER_DIR/$DEFAULT_CONFIG_FILE" ]]; then
-    eval "$(awk '!/^(#|$|[[:blank:]]*$)/ { print "CONFIG_"$0 }' "$DEFAULT_USER_DIR/$DEFAULT_CONFIG_FILE")" 2>/dev/null || {
-      printf "%s: %s '%s'\\n" "${0##*/}" "error in config file" "$DEFAULT_USER_DIR/$DEFAULT_CONFIG_FILE" >&2
-      exit 1
-    }
-  elif [[ -r "$DEFAULT_SYSTEM_DIR/$DEFAULT_CONFIG_FILE" ]]; then
-    eval "$(awk '!/^(#|$|[[:blank:]]*$)/ { print "CONFIG_"$0 }' "$DEFAULT_SYSTEM_DIR/$DEFAULT_CONFIG_FILE")" 2>/dev/null || {
-      printf "%s: %s '%s'\\n" "${0##*/}" "error in config file" "$DEFAULT_SYSTEM_DIR/$DEFAULT_CONFIG_FILE" >&2
-      exit 1
-    }
-  fi
-elif [[ "$LAST_ARG" != -* ]] || { [[ "$LAST_ARG" == -* ]] && [[ "$PREV_ARG" == "--" ]]; }; then
-  # Read the config file given on the command line.
-  if [[ "${LAST_ARG:0:1}" == "/" ]]; then
-    [[ -e "$LAST_ARG" ]] && [[ ! -d "$LAST_ARG" ]] && [[ -r "$LAST_ARG" ]] && FILENAME="$LAST_ARG"
-  else
-    [[ -e "$LAST_ARG" ]] && [[ ! -d "$LAST_ARG" ]] && [[ -r "$LAST_ARG" ]] && FILENAME="$LAST_ARG"
-    [[ -z "$FILENAME" ]] && [[ -e "$DEFAULT_USER_DIR/$LAST_ARG" ]] && [[ ! -d "$DEFAULT_USER_DIR/$LAST_ARG" ]] && [[ -r "$DEFAULT_USER_DIR/$LAST_ARG" ]] && \
-        FILENAME="$DEFAULT_USER_DIR/$LAST_ARG"
-    [[ -z "$FILENAME" ]] && [[ -e "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && [[ ! -d "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && [[ -r "$DEFAULT_SYSTEM_DIR/$LAST_ARG" ]] && \
-        FILENAME="$DEFAULT_SYSTEM_DIR/$LAST_ARG"
-  fi
-  [[ -z "$FILENAME" ]] && {
-    printf "%s: '%s' %s\\n" "${0##*/}" "$LAST_ARG" "invalid config file name" >&2
-    exit 1
-  }
+# Get the config filename if it was given on the command line, or use the default.
+[[ -z "$FIRST_ARG" ]] || [[ "$FIRST_ARG" =~ -[^-] ]] && FILENAME="$DEFAULT_CONFIG_FILE" && SKIP_CUSTOM=1
+[[ ! -v FILENAME ]] && [[ "$FIRST_ARG" != -* ]] && FILENAME="$FIRST_ARG" && unset "ARGS[0]"
+[[ ! -v FILENAME ]] && [[ "$FIRST_ARG" == "--" ]] && [[ -n "$SECOND_ARG" ]] && FILENAME="$SECOND_ARG" && unset "ARGS[1]"
+
+# Find and validate the correct config filename.
+if (( ${SKIP_CUSTOM:-0} == 1 )) && [[ -e "$DEFAULT_USER_DIR/$FILENAME" ]] && [[ ! -d "$DEFAULT_USER_DIR/$FILENAME" ]] && \
+    [[ -r "$DEFAULT_USER_DIR/$FILENAME" ]]; then
+  FILENAME="$DEFAULT_USER_DIR/$FILENAME"
+elif (( ${SKIP_CUSTOM:-0} == 1 )) && [[ -e "$DEFAULT_SYSTEM_DIR/$FILENAME" ]] && [[ ! -d "$DEFAULT_SYSTEM_DIR/$FILENAME" ]] && \
+    [[ -r "$DEFAULT_SYSTEM_DIR/$FILENAME" ]]; then
+  FILENAME="$DEFAULT_SYSTEM_DIR/$FILENAME"
+elif [[ "${FILENAME:0:1}" != "/" ]] && [[ -e "$FILENAME" ]] && [[ ! -d "$FILENAME" ]] && [[ -r "$FILENAME" ]]; then
+  :
+elif [[ "${FILENAME:0:1}" != "/" ]] && [[ -e "$DEFAULT_USER_DIR/$FILENAME" ]] && [[ ! -d "$DEFAULT_USER_DIR/$FILENAME" ]] && \
+    [[ -r "$DEFAULT_USER_DIR/$FILENAME" ]]; then
+  FILENAME="$DEFAULT_USER_DIR/$FILENAME"
+elif [[ "${FILENAME:0:1}" != "/" ]] && [[ -e "$DEFAULT_SYSTEM_DIR/$FILENAME" ]] && [[ ! -d "$DEFAULT_SYSTEM_DIR/$FILENAME" ]] && \
+    [[ -r "$DEFAULT_SYSTEM_DIR/$FILENAME" ]]; then
+  FILENAME="$DEFAULT_SYSTEM_DIR/$FILENAME"
+elif [[ "${FILENAME:0:1}" == "/" ]] && [[ -e "$FILENAME" ]] && [[ ! -d "$FILENAME" ]] && [[ -r "$FILENAME" ]]; then
+  :
+elif [[ -n "$FILENAME" ]]; then
+  printf "%s: '%s' %s\\n" "${0##*/}" "$FILENAME" "invalid config file name" >&2
+  exit 1
+fi
+
+# Read the config file.
+[[ -n "$FILENAME" ]] && {
   eval "$(awk '!/^(#|$|[[:blank:]]*$)/ { print "CONFIG_"$0 }' "$FILENAME")" 2>/dev/null || {
     printf "%s: %s '%s'\\n" "${0##*/}" "error in config file" "$FILENAME" >&2
     exit 1
   }
-  unset "ARGS[-1]"
-  (( ${#ARGS[@]} > 0 )) && [[ "${ARGS[-1]}" == "--" ]] && unset "ARGS[-1]"
-fi
+}
 
 # Parse command line options.
 set -- "${ARGS[@]}"
@@ -395,13 +393,10 @@ while [[ -n "$1" ]]; do
       shift
       break
       ;;
-    -*)
+    *)
       printf "%s: %s: %s\\n" "${0##*/}" "invalid option" "$1" >&2
       printf "%s: %s %s\\n" "Try" "${0##*/}" "--help" >&2
       exit 1
-      ;;
-   *)
-      break
       ;;
   esac
   shift
@@ -409,7 +404,7 @@ done
 
 # The options list should be empty if the correct syntax was used.
 [[ -n "$1" ]] && {
-  printf "%s: %s\\n" "${0##*/}" "too many non-option arguments provided" >&2
+  printf "%s: %s\\n" "${0##*/}" "options cannot come after --" >&2
   exit 1
 }
 

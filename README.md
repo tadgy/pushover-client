@@ -13,7 +13,7 @@ Usage
 Configuration options for `pushover-client` can be provided in a (user specifiable or default) configuration file, given on the command line, or a mixture
 of both.
 
-The basic usage of the pushover client is: `pushover-client [options] [config file]`.
+The basic usage of the pushover client is: `pushover-client [config file] [options]`.
 
 There are three **required** options that must be given in either the default or user specified custom config file, or on the command line:
   1. The user key(s) (config file: `USER_KEYS`, command line:` -u|--user`).
@@ -27,7 +27,7 @@ to specify the "dynamic" options (such as the message/alert to be sent).
 
 Config files
 ------------
-Config files can be used to define "usages" or alert types for individual circumstances.  Specifying the majority of "fixed" configuration options in the
+Config files can be used to define "usages" or alerts or individual circumstances.  Specifying the majority of "fixed" configuration options in the
 config file makes the command line of `pushover-client` cleaner and easier to use.
 
 A properly configured config file specified on the command line can be the only item required to send an alert.
